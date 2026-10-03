@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="author" content="A. Elangovan, PhD">
+<title>Polarimeter Optical Activity Simulator</title>
+<style>
+/* Layout: control strip on top, then three stacked canvases (bench, why, molecule), each with a short caption. */
+:root{
+  --bg:#f4f7fa; --panel:#ffffff; --ink:#0f1b2d; --muted:#53627a; --line:#c9d3e0;
+  --beam:#d99100; --right:#d23b3b; --left:#2a67d6; --axis:#0f9d8f; --glass:#dfe8f2;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a111c; --panel:#111b2a; --ink:#e8eef7; --muted:#9aaac0; --line:#2c3b50;
+    --beam:#ffc83d; --right:#ff6b6b; --left:#6aa2ff; --axis:#35d0c0; --glass:#1d2a3d;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a111c; --panel:#111b2a; --ink:#e8eef7; --muted:#9aaac0; --line:#2c3b50;
+  --beam:#ffc83d; --right:#ff6b6b; --left:#6aa2ff; --axis:#35d0c0; --glass:#1d2a3d;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif}
+.wrap{max-width:1080px;margin-inline:auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:20px}
+h1{margin:0;font-size:1.7rem;line-height:1.2;text-wrap:balance}
+h2{margin:0 0 4px;font-size:1.15rem;text-wrap:balance}
+p{margin:0}
+.sub{color:var(--muted);max-width:70ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.chain{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;counter-reset:s}
+.chain li{counter-increment:s;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:.9rem;min-width:0}
+.chain li::before{content:counter(s);display:inline-block;margin-right:8px;font-weight:700;color:var(--axis)}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px 28px}
+fieldset{border:0;margin:0;padding:0;min-width:0}
+legend{font-weight:600;padding:0;margin-bottom:6px}
+.radio{display:flex;gap:8px;align-items:center;padding:3px 0}
+.row{display:grid;grid-template-columns:1fr auto;gap:2px 10px;margin-bottom:8px}
+.row input{grid-column:1/-1;width:100%;accent-color:var(--axis)}
+output{font-variant-numeric:tabular-nums;font-weight:600}
+.btns{display:flex;flex-wrap:wrap;gap:8px;grid-column:1/-1}
+button{font:inherit;padding:6px 14px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button:hover{border-color:var(--axis)}
+:focus-visible{outline:2px solid var(--axis);outline-offset:2px}
+.read{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.read div{min-width:0}
+.k{font-size:.85rem;font-weight:600;color:var(--muted)}
+.v{font-size:1.5rem;font-weight:700;font-variant-numeric:tabular-nums}
+.small{font-size:.88rem;color:var(--muted)}
+canvas{display:block;width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.cap{margin-top:8px;max-width:80ch}
+.r{color:var(--right);font-weight:600}.l{color:var(--left);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Polarimeter: how a chiral compound turns plane-polarized light</h1>
+  <p class="sub">A simplified model of a sodium-lamp polarimeter. Change the sample and watch the plane of polarization twist as the light passes through the tube.</p>
+</header>
+
+<ol class="chain" aria-label="Chain of cause">
+  <li>The light's oscillating electric field pushes the electrons of a chiral molecule along its twisted framework.</li>
+  <li>The push shifts charge (electric dipole) and also circulates it (magnetic dipole). In the mirror-image molecule the circulation is reversed.</li>
+  <li>Left- and right-circularly polarized light therefore see slightly different refractive indices, n<sub>L</sub> ≠ n<sub>R</sub>.</li>
+  <li>Plane-polarized light is the sum of equal L and R components. When one gets ahead, the sum tilts.</li>
+  <li>The plane leaves turned by α = (π l / λ)(n<sub>L</sub> − n<sub>R</sub>). The enantiomer turns it by −α.</li>
+</ol>
+
+<section class="panel controls" aria-label="Controls">
+  <fieldset id="sample">
+    <legend>Sample in the tube</legend>
+    <label class="radio"><input type="radio" name="s" value="plus" checked> (S)-(+)-carvone, [α] = +61° (caraway)</label>
+    <label class="radio"><input type="radio" name="s" value="minus"> (R)-(−)-carvone, [α] = −61° (spearmint)</label>
+    <label class="radio"><input type="radio" name="s" value="rac"> Racemic carvone, 50:50 mixture</label>
+    <label class="radio"><input type="radio" name="s" value="achiral"> Acetone (achiral)</label>
+  </fieldset>
+  <div>
+    <div class="row"><label for="c">Concentration c (g/mL)</label><output id="cv"></output>
+      <input type="range" id="c" min="0" max="1" step="0.05" value="0.75"></div>
+    <div class="row"><label for="l">Path length l (dm)</label><output id="lv"></output>
+      <input type="range" id="l" min="0.5" max="2" step="0.5" value="1"></div>
+    <div class="row"><label for="phi">Analyzer angle φ (0° = parallel to polarizer)</label><output id="phiv"></output>
+      <input type="range" id="phi" min="-180" max="180" step="0.5" value="0"></div>
+  </div>
+  <div class="btns">
+    <button id="play" type="button">Pause</button>
+    <button id="find" type="button">Turn analyzer to maximum</button>
+    <button id="zero" type="button">Analyzer to 0°</button>
+  </div>
+</section>
+
+<section class="panel read" aria-label="Readouts" aria-live="polite">
+  <div><div class="k">Observed rotation α</div><div class="v" id="alpha"></div>
+    <div class="small">Positive = clockwise as seen looking toward the lamp (dextrorotatory).</div></div>
+  <div><div class="k">Detector intensity</div><div class="v" id="inten"></div>
+    <div class="small" id="intform"></div></div>
+  <div><div class="k">Refractive index difference</div><div class="v" id="dn"></div>
+    <div class="small">n<sub>L</sub> − n<sub>R</sub> needed to produce this α at 589 nm.</div></div>
+  <div style="grid-column:1/-1"><div class="k">Specific rotation</div>
+    <div id="spec"></div></div>
+</section>
+
+<section>
+  <h2>1. The bench</h2>
+  <canvas id="bench" aria-label="Side view of the polarimeter with end-on dials"></canvas>
+  <p class="cap small">Light from a monochromatic sodium lamp (589 nm) is unpolarized: many planes at once. The polarizer keeps one plane. Inside the sample the plane turns steadily with distance. The analyzer passes the part of the wave along its axis, so the detector is brightest when φ = α. Dials show the view from the detector looking back toward the lamp. White light would not do: [α] changes with wavelength, so each color would turn by a different amount.</p>
+</section>
+
+<section>
+  <h2>2. Why the plane turns</h2>
+  <canvas id="why" aria-label="Left and right circular components at three positions in the tube"></canvas>
+  <p class="cap small">The three dials show the same light at successive points as it travels through the sample (left to right), seen end-on from the detector. Plane-polarized light equals <span class="r">right-circular (R, clockwise)</span> plus <span class="l">left-circular (L, counterclockwise)</span> light of half the amplitude each; their sum (black) oscillates along one line. The chiral sample slows one component more than the other, so the two arrows fall out of step and the line they trace tilts. The mirror-image sample slows the other component, so the tilt goes the other way. In the racemic mixture the two effects cancel exactly.</p>
+</section>
+
+<section>
+  <h2>3. The molecule's side of it</h2>
+  <canvas id="mol" aria-label="Mirror-image helices with an electron driven by the electric field"></canvas>
+  <p class="cap small">Cartoon model: an electron (blue) constrained to a helical path. The field E pushes it along the axis, which gives an induced electric dipole parallel to E. Because the path is a helix, the electron also circulates around the axis and creates a magnetic moment m. The mirror-image helix circulates the opposite way, so m reverses relative to E, and with it the sign of the rotation. An achiral molecule has no such helical path, so there is no net coupling and no rotation. In this model the left-handed helix stands for the (+) form. Real (+)/(−) labels cannot be read from helix handedness, and a real solution has molecules in every orientation, which this picture does not show.</p>
+</section>
+
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const TAU = Math.PI * 2, D2R = Math.PI / 180;
+const LAMBDA = 589e-9;                       // sodium D line, m
+const SAMPLES = {
+  plus:    { spec: +61, hand: -1 },          // (S)-(+)-carvone, neat [a]20/D ~ +61
+  minus:   { spec: -61, hand: +1 },          // (R)-(-)-carvone, neat [a]20/D ~ -61
+  rac:     { spec: 0,   hand: 0 },
+  achiral: { spec: 0,   hand: null }
+};
+const state = { sample: 'plus', c: 0.75, l: 1, phi: 0, t: 0.3,
+                playing: !matchMedia('(prefers-reduced-motion: reduce)').matches };
+
+const alpha = () => SAMPLES[state.sample].spec * state.l * state.c;          // degrees
+const intensity = () => Math.cos((state.phi - alpha()) * D2R) ** 2;         // Malus
+const fmt = (d, n = 1) => Math.abs(d) < 0.05 ? (0).toFixed(n) + '°' : (d > 0 ? '+' : '−') + Math.abs(d).toFixed(n) + '°';
+
+/* canvases */
+function setup(id, w, h) {
+  const c = $(id), dpr = Math.min(devicePixelRatio || 1, 2);
+  c.width = w * dpr; c.height = h * dpr; c.style.aspectRatio = w + '/' + h;
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); return g;
+}
+const gA = setup('bench', 1000, 560), gB = setup('why', 1000, 330), gC = setup('mol', 1000, 330);
+
+const P = {};
+function readPalette() {
+  const s = getComputedStyle(document.documentElement);
+  for (const k of ['panel', 'ink', 'muted', 'line', 'beam', 'right', 'left', 'axis', 'glass']) P[k] = s.getPropertyValue('--' + k).trim();
+}
+
+/* drawing helpers */
+function line(g, x0, y0, x1, y1, col, w = 1, dash = []) {
+  g.save(); g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash);
+  g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke(); g.restore();
+}
+function arrow(g, x0, y0, x1, y1, col, w = 2) {
+  const a = Math.atan2(y1 - y0, x1 - x0), h = 8 + w;
+  if (Math.hypot(x1 - x0, y1 - y0) < 3) return;
+  line(g, x0, y0, x1, y1, col, w);
+  g.save(); g.fillStyle = col; g.beginPath(); g.moveTo(x1, y1);
+  g.lineTo(x1 - h * Math.cos(a - .4), y1 - h * Math.sin(a - .4));
+  g.lineTo(x1 - h * Math.cos(a + .4), y1 - h * Math.sin(a + .4)); g.closePath(); g.fill(); g.restore();
+}
+function circle(g, x, y, r, fill, stroke, w = 1) {
+  g.beginPath(); g.arc(x, y, r, 0, TAU);
+  if (fill) { g.fillStyle = fill; g.fill(); }
+  if (stroke) { g.strokeStyle = stroke; g.lineWidth = w; g.stroke(); }
+}
+function txt(g, s, x, y, o = {}) {
+  g.font = (o.weight || 400) + ' ' + (o.size || 17) + 'px "Segoe UI",system-ui,sans-serif';
+  g.fillStyle = o.color || P.ink; g.textAlign = o.align || 'center'; g.textBaseline = 'alphabetic'; g.fillText(s, x, y);
+}
+/* plane angle theta: clockwise from up, as seen looking toward the source. E = (sin th, cos th) with x right, y up */
+const dir = th => [Math.sin(th), -Math.cos(th)];       // screen offset for the end-on view
+function planeLine(g, cx, cy, r, th, col, w, dash) {
+  const [dx, dy] = dir(th); line(g, cx - r * dx, cy - r * dy, cx + r * dx, cy + r * dy, col, w, dash);
+}
+function dialBase(g, cx, cy, r) {
+  circle(g, cx, cy, r, null, P.line, 1.5);
+  line(g, cx, cy - r, cx, cy + r, P.line, 1, [3, 4]);
+  line(g, cx - r, cy, cx + r, cy, P.line, 1, [3, 4]);
+}
+function arc(g, cx, cy, rho, ang, col) {
+  if (Math.abs(ang) < 0.02) return;
+  g.save(); g.strokeStyle = col; g.lineWidth = 2; g.beginPath();
+  g.arc(cx, cy, rho, -Math.PI / 2, -Math.PI / 2 + ang, ang < 0); g.stroke(); g.restore();
+}
+
+/* helix: axis vertical, o = {cx,cy,R,H,turns,hand,tilt}; t in [0, turns*TAU] */
+function hp(o, t) {
+  const T = o.turns * TAU, x = o.hand * o.R * Math.sin(t), z = o.R * Math.cos(t), y = -o.H / 2 + o.H * t / T;
+  return [o.cx + x, o.cy - y + o.tilt * z, z];
+}
+function drawHelix(g, o, lw, col) {
+  const T = o.turns * TAU, dt = 0.12;
+  g.save(); g.lineWidth = lw; g.lineCap = 'round'; g.strokeStyle = col;
+  for (let t = 0; t < T; t += dt) {
+    const a = hp(o, t), b = hp(o, Math.min(t + dt, T));
+    g.globalAlpha = (a[2] + b[2]) / 2 > 0 ? 1 : 0.28;
+    g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+  }
+  g.restore();
+}
+
+/* molecule glyphs inside the tube (seeded so they hold still) */
+const GL = []; { let s = 7; const rnd = () => (s = s * 16807 % 2147483647) / 2147483647;
+  for (let i = 0; i < 16; i++) GL.push({ x: 350 + rnd() * 260, y: 135 + rnd() * 80, rot: (rnd() - .5) * 2.4, i }); }
+function glyphs(g, t) {
+  const sm = SAMPLES[state.sample];
+  GL.forEach(m => {
+    const x = m.x + 4 * Math.sin(t * 1.3 + m.i), y = m.y + 4 * Math.cos(t * 1.1 + m.i * 2);
+    if (sm.hand === null) { circle(g, x, y, 3, P.muted); circle(g, x + 7, y + 3, 2, P.muted); return; }
+    const hand = sm.hand === 0 ? (m.i % 2 ? 1 : -1) : sm.hand;
+    g.save(); g.translate(x, y); g.rotate(m.rot);
+    drawHelix(g, { cx: 0, cy: 0, R: 4.5, H: 20, turns: 2, hand, tilt: 0 }, 1.8, hand > 0 ? P.right : P.left);
+    g.restore();
+  });
+}
+
+/* ---------- panel 1: the bench ---------- */
+const Y0 = 175, XL = 70, XP = 240, XT0 = 330, XT1 = 630, XA = 740, XD = 905, AMP = 50;
+const K = TAU / 120, W = TAU * 0.5;
+function ribbon(g, x1, x2, thFn, amp, col, lw, sheet, t, ph0 = 0) {
+  const pt = x => { const th = thFn(x), e = amp * Math.sin(K * x - W * t + ph0);
+    return [x + 0.5 * e * Math.sin(th), Y0 - e * Math.cos(th) - 0.3 * e * Math.sin(th)]; };
+  if (sheet) {
+    g.save(); g.globalAlpha = 0.16; g.strokeStyle = col; g.lineWidth = 2; g.beginPath();
+    for (let x = x1; x <= x2; x += 4) { const p = pt(x); g.moveTo(x, Y0); g.lineTo(p[0], p[1]); }
+    g.stroke(); g.restore();
+  }
+  g.save(); g.strokeStyle = col; g.lineWidth = lw; g.lineJoin = 'round'; g.beginPath();
+  for (let x = x1; x <= x2; x += 2) { const p = pt(x); x === x1 ? g.moveTo(p[0], p[1]) : g.lineTo(p[0], p[1]); }
+  g.stroke(); g.restore();
+}
+function drawBench() {
+  const g = gA, t = state.t, a = alpha() * D2R, phi = state.phi * D2R;
+  g.clearRect(0, 0, 1000, 560);
+  line(g, 100, Y0, 890, Y0, P.line, 1, [4, 6]);
+
+  // component names
+  [[XL, 'Sodium lamp', '589 nm'], [XP, 'Polarizer', 'axis 0°'], [(XT0 + XT1) / 2, 'Sample tube', 'l = ' + state.l.toFixed(1) + ' dm'],
+   [XA, 'Analyzer', 'φ = ' + fmt(state.phi)], [XD, 'Detector', '']].forEach(([x, n, s]) => {
+    txt(g, n, x, 40, { weight: 600 }); txt(g, s, x, 62, { size: 15, color: P.muted });
+  });
+
+  // lamp, polarizer, analyzer
+  const gr = g.createRadialGradient(XL, Y0, 4, XL, Y0, 40);
+  gr.addColorStop(0, P.beam); gr.addColorStop(1, 'rgba(255,200,60,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(XL, Y0, 40, 0, TAU); g.fill(); circle(g, XL, Y0, 16, P.beam);
+  [XP, XA].forEach((x, i) => {
+    g.fillStyle = P.glass; g.strokeStyle = i ? P.axis : P.ink; g.lineWidth = 2;
+    g.beginPath(); g.roundRect(x - 6, 112, 12, 126, 3); g.fill(); g.stroke();
+  });
+
+  // tube
+  g.fillStyle = state.sample === 'achiral' ? 'rgba(150,170,190,.10)' : 'rgba(120,160,255,.13)';
+  g.strokeStyle = P.ink; g.lineWidth = 2; g.beginPath(); g.roundRect(XT0, 118, XT1 - XT0, 114, 10); g.fill(); g.stroke();
+  glyphs(g, t);
+
+  // waves
+  const cols = ['#18b8d8', '#e8c400', '#d63fd0', '#e04040', '#38b84a', '#f08a20'];
+  cols.forEach((c, i) => ribbon(g, 100, XP - 8, () => 0.52 * i + 1.3 * Math.sin(0.7 * t + i * 2.1), 30, c, 2, false, t, i * 1.1));
+  ribbon(g, XP + 8, XT0, () => 0, AMP, P.beam, 3, true, t);
+  ribbon(g, XT0, XT1, x => a * (x - XT0) / (XT1 - XT0), AMP, P.beam, 3, true, t);
+  ribbon(g, XT1, XA - 8, () => a, AMP, P.beam, 3, true, t);
+  ribbon(g, XA + 8, 880, () => phi, AMP * Math.cos(phi - a), P.beam, 3, true, t);
+
+  // detector
+  const I = intensity();
+  circle(g, XD, Y0, 34, P.glass, P.ink, 2);
+  g.save(); g.globalAlpha = I; circle(g, XD, Y0, 30, P.beam); g.restore();
+  txt(g, Math.round(I * 100) + '%', XD, Y0 + 62, { weight: 600 });
+
+  // end-on dials
+  const YD = 395, R = 56;
+  const dials = [
+    { x: 120, from: 170, a1: 'Unpolarized', a2: 'many planes' },
+    { x: 300, from: 285, a1: 'After polarizer', a2: 'plane at 0°' },
+    { x: 500, from: 480, a1: 'Mid-tube', a2: 'plane at ' + fmt(alpha() / 2) },
+    { x: 700, from: 685, a1: 'After sample', a2: 'plane at ' + fmt(alpha()) },
+    { x: 880, from: 800, a1: 'Analyzer axis ' + fmt(state.phi), a2: 'transmits ' + Math.round(I * 100) + '%' }
+  ];
+  dials.forEach((d, i) => {
+    line(g, d.from, Y0 + 62, d.x, YD - R - 6, P.line, 1, [2, 4]);
+    dialBase(g, d.x, YD, R);
+    const e = Math.sin(K * d.from - W * t);
+    if (i === 0) {
+      cols.forEach((c, j) => {
+        const th = 0.52 * j + 1.3 * Math.sin(0.7 * t + j * 2.1), ee = Math.sin(K * d.from - W * t + j * 1.1);
+        planeLine(g, d.x, YD, R * .85, th, c, 1.5); const [dx, dy] = dir(th);
+        circle(g, d.x + R * .85 * ee * dx, YD + R * .85 * ee * dy, 3, c);
+      });
+    } else if (i < 4) {
+      const ang = i === 1 ? 0 : i === 2 ? a / 2 : a;
+      planeLine(g, d.x, YD, R, ang, P.beam, 1.5, [5, 4]);
+      const [dx, dy] = dir(ang);
+      arrow(g, d.x, YD, d.x + R * .9 * e * dx, YD + R * .9 * e * dy, P.beam, 3);
+      if (i === 3) { arc(g, d.x, YD, R * .5, a, P.ink); }
+    } else {
+      planeLine(g, d.x, YD, R, a, P.beam, 1.5, [5, 4]);
+      planeLine(g, d.x, YD, R, phi, P.axis, 3);
+      const [dx, dy] = dir(phi), ee = e * Math.cos(phi - a);
+      arrow(g, d.x, YD, d.x + R * .9 * ee * dx, YD + R * .9 * ee * dy, P.ink, 3);
+    }
+    txt(g, d.a1, d.x, YD + R + 28, { weight: 600, size: 16 });
+    txt(g, d.a2, d.x, YD + R + 50, { size: 15, color: P.muted });
+  });
+}
+
+/* ---------- panel 2: L and R components ---------- */
+function drawWhy() {
+  const g = gB, t = state.t, a = alpha() * D2R, r = 100, cy = 160;
+  g.clearRect(0, 0, 1000, 330);
+  const spots = [[170, 0, 'Tube entry'], [500, 0.5, 'Middle of the tube'], [830, 1, 'Tube exit']];
+  spots.forEach(([cx, f, name], i) => {
+    const ang = a * f, ps = TAU * 0.35 * t;
+    txt(g, name, cx, 26, { weight: 600 });
+    dialBase(g, cx, cy, r);
+    planeLine(g, cx, cy, r, ang, P.beam, 1.5, [5, 4]);
+    const R = [cx + r / 2 * Math.sin(ps + ang), cy - r / 2 * Math.cos(ps + ang)];
+    const L = [cx + r / 2 * Math.sin(-ps + ang), cy - r / 2 * Math.cos(-ps + ang)];
+    const S = [R[0] + L[0] - cx, R[1] + L[1] - cy];
+    line(g, R[0], R[1], S[0], S[1], P.muted, 1, [3, 3]); line(g, L[0], L[1], S[0], S[1], P.muted, 1, [3, 3]);
+    arrow(g, cx, cy, R[0], R[1], P.right, 3); arrow(g, cx, cy, L[0], L[1], P.left, 3);
+    arrow(g, cx, cy, S[0], S[1], P.ink, 4);
+    arc(g, cx, cy, r * .4, ang, P.ink);
+    txt(g, i === 0 ? 'R and L in step' : i === 1 ? 'halfway out of step' : 'plane turned by α = ' + fmt(alpha()), cx, cy + r + 30, { size: 16, color: P.muted });
+    if (i < 2) { arrow(g, cx + r + 30, cy, cx + 330 - r - 30, cy, P.line, 2); }
+  });
+}
+
+/* ---------- panel 3: helices ---------- */
+function drawMol() {
+  const g = gC, t = state.t;
+  g.clearRect(0, 0, 1000, 330);
+  line(g, 500, 24, 500, 310, P.line, 1.5, [6, 6]);
+  txt(g, 'mirror plane', 500, 18, { size: 14, color: P.muted });
+  [{ cx: 280, hand: -1, name: '(+) form in this model', key: 'plus' }, { cx: 720, hand: +1, name: '(−) form in this model', key: 'minus' }].forEach(m => {
+    const o = { cx: m.cx, cy: 160, R: 38, H: 190, turns: 2.5, hand: m.hand, tilt: 0.3 };
+    const on = state.sample === m.key || state.sample === 'rac';
+    if (on) { g.save(); g.strokeStyle = P.axis; g.lineWidth = 2; g.beginPath(); g.roundRect(m.cx - 150, 34, 300, 250, 12); g.stroke(); g.restore(); }
+    drawHelix(g, o, 3.5, P.muted);
+    const T = o.turns * TAU, tb = T / 2 - 3.2 * Math.sin(W * t);             // electron moves against E
+    const b = hp(o, tb); circle(g, b[0], b[1], 8, P.left); txt(g, 'e⁻', b[0] + 20, b[1] + 5, { size: 14, color: P.left });
+    // electron on a right-handed helix (h=+1) circulates so that m_y = -h * vy; vy ~ -cos(wt), so m ~ h * cos(wt)
+    const E = Math.sin(W * t), ex = m.cx - 105, mx = m.cx + 105, mm = m.hand * Math.cos(W * t);
+    arrow(g, ex, 160, ex, 160 - 55 * E, P.beam, 4); txt(g, 'E', ex, 258, { weight: 700, color: P.beam });
+    arrow(g, mx, 160, mx, 160 - 55 * mm, P.right, 4); txt(g, 'm', mx, 258, { weight: 700, color: P.right });
+    txt(g, m.name, m.cx, 302, { size: 16, weight: 600 });
+  });
+}
+
+/* ---------- readouts ---------- */
+function update() {
+  const a = alpha(), s = SAMPLES[state.sample];
+  $('cv').textContent = state.c.toFixed(2); $('lv').textContent = state.l.toFixed(1);
+  $('phiv').textContent = fmt(state.phi);
+  $('alpha').textContent = fmt(a);
+  $('inten').textContent = Math.round(intensity() * 100) + '%';
+  $('intform').textContent = 'I/I₀ = cos²(φ − α); φ = ' + fmt(state.phi) + ', α = ' + fmt(a);
+  const dn = a * D2R * LAMBDA / (Math.PI * state.l * 0.1);
+  $('dn').textContent = Math.abs(a) < 0.05 ? '0' : (dn > 0 ? '+' : '−') + Math.abs(dn * 1e6).toFixed(2) + ' × 10⁻⁶';
+  const what = s.spec === 0
+    ? (state.sample === 'rac' ? 'The two enantiomers rotate equally and oppositely, so α = 0.' : 'An achiral compound has no net coupling, so α = 0.')
+    : '';
+  $('spec').innerHTML = 'α = [α] × l × c = (' + fmt(s.spec, 0) + ') × (' + state.l.toFixed(1) + ' dm) × (' + state.c.toFixed(2) + ' g/mL) = <b>' + fmt(a) + '</b>. '
+    + 'Specific rotation [α] = α / (l × c) is a property of the compound at 589 nm and 20 °C; it does not change when you change c or l. '
+    + 'Values for neat carvone, approximate. ' + what;
+}
+
+/* ---------- wiring ---------- */
+document.querySelectorAll('input[name=s]').forEach(r => r.addEventListener('change', () => { state.sample = r.value; update(); }));
+$('c').addEventListener('input', e => { state.c = +e.target.value; update(); });
+$('l').addEventListener('input', e => { state.l = +e.target.value; update(); });
+$('phi').addEventListener('input', e => { state.phi = +e.target.value; update(); });
+$('play').addEventListener('click', () => { state.playing = !state.playing; $('play').textContent = state.playing ? 'Pause' : 'Play'; });
+function setPhi(v) { state.phi = v; $('phi').value = v; update(); }
+$('find').addEventListener('click', () => { let v = alpha(); v = ((v + 180) % 360 + 360) % 360 - 180; setPhi(Math.round(v * 2) / 2); });
+$('zero').addEventListener('click', () => setPhi(0));
+$('play').textContent = state.playing ? 'Pause' : 'Play';
+
+let last = performance.now();
+function frame(now) {
+  if (state.playing) state.t += (now - last) / 1000;
+  last = now; readPalette(); drawBench(); drawWhy(); drawMol(); requestAnimationFrame(frame);
+}
+window.sim = { state, alpha, intensity };
+update(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
